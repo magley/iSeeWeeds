@@ -1,3 +1,9 @@
+# Datasets
+
+dataset-raw/
+datasets/*/
+
+
 # Neural Network weights -----------------------------------------------------------------------------------------------
 weights/
 *.weights
