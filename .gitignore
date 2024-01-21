@@ -1,3 +1,21 @@
+# Neural Network weights -----------------------------------------------------------------------------------------------
+weights/
+*.weights
+*.pt
+*.pb
+*.onnx
+*.engine
+*.mlmodel
+*.mlpackage
+*.torchscript
+*.tflite
+*.h5
+*_saved_model/
+*_web_model/
+*_openvino_model/
+*_paddle_model/
+pnnx*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
