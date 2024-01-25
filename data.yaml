@@ -1,0 +1,8 @@
+path: mydataset
+train: train
+val: validate
+test: test
+nc: 2
+names:
+  0: crop
+  1: weed
