@@ -200,7 +200,7 @@ class Window(QWidget):
         self.set_log("Loading AI model...")
         global model
         from ultralytics import YOLO
-        model = YOLO('runs/detect/train12/weights/best.pt')
+        model = YOLO('iSeeWeeds.pt')
         self.set_log("")
 
     def draw_bboxes(self):

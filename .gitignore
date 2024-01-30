@@ -8,9 +8,10 @@ datasets/*/
 
 # Neural Network weights -----------------------------------------------------------------------------------------------
 runs/
+*.pt
+!iSeeWeeds.pt
 weights/
 *.weights
-*.pt
 *.pb
 *.onnx
 *.engine
