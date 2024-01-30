@@ -66,22 +66,25 @@ model = None
 
 
 def get_ground_truth(fname_truth):
-    truth = []
-
-    with open(TEST_PATH + '/' + fname_truth) as f:
-        lines = f.readlines()
-        for l in lines:
-            items = l.split()
-            truth.append({
-                'class': int(items[0]),
-                'xywh': np.array([float(x) for x in items[1:]])
-            })
-    return truth
+    try:
+        truth = []
+        with open(fname_truth) as f:
+            lines = f.readlines()
+            for l in lines:
+                items = l.split()
+                truth.append({
+                    'class': int(items[0]),
+                    'xywh': np.array([float(x) for x in items[1:]])
+                })
+        return truth
+    except FileNotFoundError:
+        print(f"No truth file found {fname_truth}")
+        return []
 
 
 def get_eval_result(fname_img):
     got = []
-    res = model(TEST_PATH +  fname_img)
+    res = model(fname_img)
     for r in res:
         for b in r.boxes:
             got.append({
@@ -100,7 +103,7 @@ class Window(QWidget):
         super().__init__()
  
         self.acceptDrops()
-        self.setWindowTitle("iSeeWeeds GUI")
+        self.setWindowTitle("iSeeWeeds")
         W = 512 * 2 + 32
         H = 512 + 32
         self.setGeometry(int((1920 - W) / 2), int((1080 - H) / 2), W, H)
@@ -115,6 +118,9 @@ class Window(QWidget):
 
         self.btn_random_image = QPushButton("Random image")
         self.btn_random_image.clicked.connect(self.on_click_btn_random_image)
+
+        self.btn_load_image = QPushButton("Open image...")
+        self.btn_load_image.clicked.connect(self.on_click_btn_load_image)
 
         self.cb_show_got = QCheckBox("Show result")
         self.cb_show_got.setChecked(True)
@@ -140,7 +146,8 @@ class Window(QWidget):
    
         h2.addWidget(self.btn_history_back, stretch=1)
         h2.addWidget(self.btn_history_forward, stretch=1)
-        h2.addWidget(self.btn_random_image, stretch=20)
+        h2.addWidget(self.btn_random_image, stretch=50)
+        h2.addWidget(self.btn_load_image, stretch=20)
 
         h3.addWidget(self.cb_show_got, stretch=1)
         h3.addWidget(self.cb_show_truth, stretch=3)
@@ -164,6 +171,8 @@ class Window(QWidget):
         self.history_i = 0
         self.set_history_buttons_enabled()
 
+        self.setWindowIcon(PyQt5.QtGui.QIcon('ico_iseeweeds.png'))
+
     def set_log(self, log = ""):
         self.lbl_log.setText(log)
 
@@ -174,12 +183,12 @@ class Window(QWidget):
     def history_back(self):
         self.history_i -= 1
         fname = self.history[self.history_i]
-        self.eval_img(fname, False)
+        self.eval_img(fname, False, True)
 
     def history_forward(self):
         self.history_i += 1
         fname = self.history[self.history_i]
-        self.eval_img(fname, False)
+        self.eval_img(fname, False, True)
 
     def on_toggle_cb_show_got(self):     
         self.draw_bboxes()
@@ -201,7 +210,7 @@ class Window(QWidget):
         if 'fname' not in self.current_img or 'truth' not in self.current_img or 'got' not in self.current_img:
             return
         
-        img = cv2.imread(TEST_PATH + self.current_img['fname'], cv2.COLOR_RGB2BGR)
+        img = cv2.imread(self.current_img['fname'], cv2.COLOR_RGB2BGR)
 
         if draw_truth:
             for t in self.current_img['truth']:
@@ -213,18 +222,30 @@ class Window(QWidget):
         img2 = PyQt5.QtGui.QImage(img.data, img.shape[1], img.shape[0], PyQt5.QtGui.QImage.Format_BGR888)
         self.label2.setPixmap(PyQt5.QtGui.QPixmap.fromImage(img2))
 
-    def eval_img(self, fname: str, new_one = True):
-        print(fname, self.history_i)
+    def eval_img(self, fname: str, new_one = True, full_image_path = False):
+        fname_img = ""
+        fpath_img = ""
+        fname_truth = ""
+        fpath_truth = ""
+        if not full_image_path:
+            fname_img = f"{fname}.jpeg"
+            fname_truth = f"{fname}.txt"
+            fpath_img = TEST_PATH + fname_img
+            fpath_truth = TEST_PATH + '/' + fname_truth
+        else:
+            fname_img = fname
+            fpath_img = fname_img
+            fname_truth = fname.split("/")[-1].split(".")[0]
+            fpath_truth = "/".join(fname.split("/")[:-1]) + "/" + fname_truth + ".txt"
+
         if new_one:
-            self.history.append(fname)
+            self.history.append(fpath_img)
             self.history_i = len(self.history) - 1
 
-        fname_img = f"{fname}.jpeg"
-        fname_truth = f"{fname}.txt"
+        self.label1.setPixmap(QPixmap(fpath_img))
 
-        self.label1.setPixmap(QPixmap(TEST_PATH + fname_img))
         self.current_img = {
-            'fname': fname_img
+            'fname': fpath_img
         }
 
         def evaulate_and_draw_rects():
@@ -232,8 +253,8 @@ class Window(QWidget):
                 self.load_ai_model()
 
             self.set_log(f"Evaluating {fname_img}...")
-            got = get_eval_result(fname_img)
-            truth = get_ground_truth(fname_truth)
+            got = get_eval_result(fpath_img)
+            truth = get_ground_truth(fpath_truth)
 
             self.current_img['got'] = got
             self.current_img['truth'] = truth
@@ -249,7 +270,13 @@ class Window(QWidget):
     def on_click_btn_random_image(self):
         random.seed(time.time())
         fname = random.choice(fnames)
-        self.eval_img(fname)
+        self.eval_img(TEST_PATH + fname + ".jpeg", full_image_path = True)
+
+    def on_click_btn_load_image(self):
+        options = QFileDialog.Options()
+        fileName, _ = QFileDialog.getOpenFileName(self,"Open an image", os.getcwd(), "All Files (*);;JPEG (*.jpeg)", options=options)
+        if fileName:
+            self.eval_img(fileName, full_image_path = True)
  
 
 App = QApplication(sys.argv)
