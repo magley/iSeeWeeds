@@ -46,7 +46,7 @@ def draw_rect_and_label(img, xywh, class_id, transparency, thickness, confidence
 
     color = (0, 255, 0)
     if class_id == 1:
-        color = (255, 0, 0)
+        color = (0, 0, 255)
     p1 = (int(x), int(y))
     p2 = (int(x + w), int(y + h))
 
@@ -65,16 +65,6 @@ fnames = get_input_filenames_without_extension(TEST_PATH)
 model = None
 
 
-def load_model():
-    print("Loading AI model...")
-
-    global model
-    from ultralytics import YOLO
-    model = YOLO('runs/detect/train12/weights/best.pt')
-
-    print("Finished...")
-
-
 def get_ground_truth(fname_truth):
     truth = []
 
@@ -90,9 +80,6 @@ def get_ground_truth(fname_truth):
 
 
 def get_eval_result(fname_img):
-    if model is None:
-        load_model()
-
     got = []
     res = model(TEST_PATH +  fname_img)
     for r in res:
@@ -123,45 +110,141 @@ class Window(QWidget):
 
         l = QVBoxLayout()
         h = QHBoxLayout()
-
+        h2 = QHBoxLayout()
+        h3 = QHBoxLayout()
 
         self.btn_random_image = QPushButton("Random image")
         self.btn_random_image.clicked.connect(self.on_click_btn_random_image)
 
-        l.addWidget(self.btn_random_image)
+        self.cb_show_got = QCheckBox("Show result")
+        self.cb_show_got.setChecked(True)
+        self.cb_show_got.toggled.connect(self.on_toggle_cb_show_got)
+
+        self.cb_show_truth = QCheckBox("Show truth")
+        self.cb_show_truth.setChecked(True)
+        self.cb_show_truth.toggled.connect(self.on_toggle_cb_show_truth)
+
+        self.btn_history_back = QPushButton()
+        self.btn_history_back.setToolTip("Evaluate previous image")
+        self.btn_history_back.clicked.connect(self.history_back)
+        self.btn_history_back.clicked.connect(self.set_history_buttons_enabled)
+        self.btn_history_back.setIcon(self.style().standardIcon(QStyle.SP_ArrowBack))
+
+        self.btn_history_forward = QPushButton()
+        self.btn_history_forward.setToolTip("Evaluate next image")
+        self.btn_history_forward.clicked.connect(self.history_forward)
+        self.btn_history_forward.clicked.connect(self.set_history_buttons_enabled)
+        self.btn_history_forward.setIcon(self.style().standardIcon(QStyle.SP_ArrowForward))
+
+        self.lbl_log = QLabel()
+   
+        h2.addWidget(self.btn_history_back, stretch=1)
+        h2.addWidget(self.btn_history_forward, stretch=1)
+        h2.addWidget(self.btn_random_image, stretch=20)
+
+        h3.addWidget(self.cb_show_got, stretch=1)
+        h3.addWidget(self.cb_show_truth, stretch=3)
+        h3.addWidget(self.lbl_log, stretch=20)
+        h3.addStretch()
+
         h.addWidget(self.label1)
         h.addWidget(self.label2)
+
+        l.addItem(h2)
+        l.addItem(h3)
         l.addItem(h)
+        l.addStretch()
 
         self.setLayout(l)
 
         self.show()
 
+        self.current_img = {}
+        self.history = [] # Fname history
+        self.history_i = 0
+        self.set_history_buttons_enabled()
 
-    def eval_img(self, fname: str):
+    def set_log(self, log = ""):
+        self.lbl_log.setText(log)
+
+    def set_history_buttons_enabled(self):
+        self.btn_history_back.setEnabled(self.history_i > 0)
+        self.btn_history_forward.setEnabled(self.history_i < len(self.history) - 1)
+
+    def history_back(self):
+        self.history_i -= 1
+        fname = self.history[self.history_i]
+        self.eval_img(fname, False)
+
+    def history_forward(self):
+        self.history_i += 1
+        fname = self.history[self.history_i]
+        self.eval_img(fname, False)
+
+    def on_toggle_cb_show_got(self):     
+        self.draw_bboxes()
+
+    def on_toggle_cb_show_truth(self):      
+        self.draw_bboxes()       
+
+    def load_ai_model(self):
+        self.set_log("Loading AI model...")
+        global model
+        from ultralytics import YOLO
+        model = YOLO('runs/detect/train12/weights/best.pt')
+        self.set_log("")
+
+    def draw_bboxes(self):
+        draw_got = self.cb_show_got.isChecked()
+        draw_truth = self.cb_show_truth.isChecked()
+
+        if 'fname' not in self.current_img or 'truth' not in self.current_img or 'got' not in self.current_img:
+            return
+        
+        img = cv2.imread(TEST_PATH + self.current_img['fname'], cv2.COLOR_RGB2BGR)
+
+        if draw_truth:
+            for t in self.current_img['truth']:
+                img = draw_rect_and_label(img, t['xywh'], t['class'], 0.2, -1)
+        if draw_got:
+            for g in self.current_img['got']:
+                img = draw_rect_and_label(img, g['xywh'], g['class'], 0.75, 2)
+        
+        img2 = PyQt5.QtGui.QImage(img.data, img.shape[1], img.shape[0], PyQt5.QtGui.QImage.Format_BGR888)
+        self.label2.setPixmap(PyQt5.QtGui.QPixmap.fromImage(img2))
+
+    def eval_img(self, fname: str, new_one = True):
+        print(fname, self.history_i)
+        if new_one:
+            self.history.append(fname)
+            self.history_i = len(self.history) - 1
+
         fname_img = f"{fname}.jpeg"
         fname_truth = f"{fname}.txt"
 
         self.label1.setPixmap(QPixmap(TEST_PATH + fname_img))
+        self.current_img = {
+            'fname': fname_img
+        }
 
         def evaulate_and_draw_rects():
+            if model is None:
+                self.load_ai_model()
+
+            self.set_log(f"Evaluating {fname_img}...")
             got = get_eval_result(fname_img)
             truth = get_ground_truth(fname_truth)
 
-            img = cv2.imread(TEST_PATH +  fname_img)
-            for t in truth:
-                img = draw_rect_and_label(img, t['xywh'], t['class'], 0.2, -1)
-            for g in got:
-                img = draw_rect_and_label(img, g['xywh'], g['class'], 0.75, 2)
+            self.current_img['got'] = got
+            self.current_img['truth'] = truth
 
-            # Display second image
-                     
-            img2 = PyQt5.QtGui.QImage(img.data, img.shape[1], img.shape[0], PyQt5.QtGui.QImage.Format_RGB888)
-            self.label2.setPixmap(PyQt5.QtGui.QPixmap.fromImage(img2))
+            self.set_log("")
+
+            self.draw_bboxes()
+            self.set_history_buttons_enabled()
 
         t = threading.Thread(target=evaulate_and_draw_rects)
         t.start()
-
 
     def on_click_btn_random_image(self):
         random.seed(time.time())
